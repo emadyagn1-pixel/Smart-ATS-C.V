@@ -3,6 +3,7 @@
 import os
 import io
 from fastapi import FastAPI, UploadFile, File, HTTPException, Form
+from fastapi.middleware.cors import CORSMiddleware
 from typing import Dict, Any, Optional, List
 import fitz  # PyMuPDF
 import docx
@@ -37,6 +38,14 @@ app = FastAPI(
     title="Smart CV ATS Parser & Career Platform",
     description="An intelligent multilingual platform for CV analysis, ATS compliance checking, career optimization, and job matching.",
     version="12.0.1"
+)
+# Add CORS middleware to allow frontend requests
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Allow all origins (or specify your domains)
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # --- 2. Initialize AI Models ---
