@@ -775,3 +775,141 @@ async def recommend_careers(
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8088)
+
+# ============================================
+# Translation Endpoint
+# ============================================
+
+from typing import List, Optional
+import openai
+import os
+import json
+
+# تأكد من إضافة هذا في بداية الملف إذا لم يكن موجود
+openai.api_key = os.getenv("OPENAI_API_KEY")
+
+# Models للترجمة
+class TranslateRequest(BaseModel):
+    cv_data: dict
+    target_language: str
+
+LANGUAGE_NAMES = {
+    "en": "English",
+    "de": "German (Deutsch)",
+    "fr": "French (Français)",
+    "es": "Spanish (Español)",
+    "it": "Italian (Italiano)",
+    "nl": "Dutch (Nederlands)",
+    "pl": "Polish (Polski)",
+    "pt": "Portuguese (Português)",
+    "ar": "Arabic (العربية)",
+    "zh": "Chinese (中文)",
+    "ja": "Japanese (日本語)",
+}
+
+@app.post("/translate-cv/")
+async def translate_cv(request: TranslateRequest):
+    """Translate CV content to target language"""
+    try:
+        cv = request.cv_data
+        target_language = request.target_language
+        target_lang_name = LANGUAGE_NAMES.get(target_language, "English")
+        
+        if target_language == "en":
+            return cv
+        
+        # Prepare content for translation
+        content_to_translate = {
+            "summary": cv.get("summary", ""),
+            "experience": [
+                {
+                    "position": exp.get("position", ""),
+                    "company": exp.get("company", ""),
+                    "description": exp.get("rewritten_description", "")
+                }
+                for exp in cv.get("experience", [])
+            ],
+            "education": [
+                {
+                    "degree": edu.get("degree", ""),
+                    "institution": edu.get("institution", "")
+                }
+                for edu in cv.get("education", [])
+            ],
+            "projects": [
+                {
+                    "title": proj.get("title", ""),
+                    "description": proj.get("description", "")
+                }
+                for proj in cv.get("projects", [])
+            ],
+            "hobbies": cv.get("hobbies", [])
+        }
+        
+        prompt = f"""Translate the following CV content to {target_lang_name}.
+Keep technical terms in English. Return ONLY valid JSON.
+
+{json.dumps(content_to_translate)}
+
+Return in this format:
+{{"summary": "...", "experience": [...], "education": [...], "projects": [...], "hobbies": [...]}}"""
+        
+        response = openai.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": "You are a professional CV translator. Return ONLY valid JSON."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.3,
+            max_tokens=3000
+        )
+        
+        translated_text = response.choices[0].message.content.strip()
+        if translated_text.startswith("```json"):
+            translated_text = translated_text.replace("```json", "").replace("```", "").strip()
+        
+        translated = json.loads(translated_text)
+        
+        # Construct translated CV
+        translated_cv = {
+            "name": cv.get("name", ""),
+            "email": cv.get("email", ""),
+            "phone": cv.get("phone", ""),
+            "address": cv.get("address", ""),
+            "summary": translated.get("summary", cv.get("summary", "")),
+            "skills": cv.get("skills", []),
+            "experience": [
+                {
+                    "position": translated["experience"][i].get("position", exp.get("position", "")),
+                    "company": exp.get("company", ""),
+                    "duration": exp.get("duration", ""),
+                    "rewritten_description": translated["experience"][i].get("description", exp.get("rewritten_description", ""))
+                }
+                for i, exp in enumerate(cv.get("experience", []))
+            ],
+            "education": [
+                {
+                    "degree": translated["education"][i].get("degree", edu.get("degree", "")),
+                    "institution": edu.get("institution", ""),
+                    "year": edu.get("year", "")
+                }
+                for i, edu in enumerate(cv.get("education", []))
+            ],
+            "projects": [
+                {
+                    "title": translated["projects"][i].get("title", proj.get("title", "")) if i < len(translated.get("projects", [])) else proj.get("title", ""),
+                    "description": translated["projects"][i].get("description", proj.get("description", "")) if i < len(translated.get("projects", [])) else proj.get("description", ""),
+                    "technologies": proj.get("technologies", "")
+                }
+                for i, proj in enumerate(cv.get("projects", []))
+            ],
+            "languages": cv.get("languages", []),
+            "hobbies": translated.get("hobbies", cv.get("hobbies", []))
+        }
+        
+        return translated_cv
+        
+    except Exception as e:
+        print(f"Translation error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Translation failed: {str(e)}")
+
