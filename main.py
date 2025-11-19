@@ -11,6 +11,7 @@ from dotenv import load_dotenv
 import json
 from datetime import datetime
 import uuid
+from pydantic import BaseModel
 
 # --- Language Detection ---
 from langdetect import detect, LangDetectException
